@@ -145,7 +145,17 @@ Zorg dat de Graphql-server draait.
       "toewijzingEinddatum": "2022-12-31"
     }
    ```
-
+of 
+```json
+{
+  "bemiddelingspecificatieID": "8bcba75f-c44e-4f7d-ae8f-f0912757c6b2",
+  "instelling": "54540707",
+  "toewijzingIngangsdatum": "2021-05-07",
+  "vaststellingMoment": "2021-09-07T00:00:00.000+01:00",
+  "dagVaststellingMoment": "2021-09-07",
+  "toewijzingEinddatum": "2021-09-07"
+}
+```
 ---
 
 Got it. This is the Dutch Wlz (long-term care) Indicatieregister schema — a read-only (Query only, no Mutations) schema with a deeply nested structure. Let me build the full solution.Now let me build the complete solution — the schema file, the SQLite table setup, and the full server with resolvers for this deeply nested structure:Here's what was built and why each decision was made:

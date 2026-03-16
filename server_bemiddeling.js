@@ -13,7 +13,7 @@ const DB_PATH     = path.join(__dirname, 'bemiddelingsregisterDB.db');
 const SCHEMA_PATH = path.join(__dirname, 'bemiddelingsregister.graphql');
 
 // ─── Filter builder ───────────────────────────────────────────────────────────
-
+ 
 function applyOp(col, op, val, conditions, params) {
   switch (op) {
     case 'eq':          conditions.push(`${col} = ?`);           params.push(val);        break;
@@ -46,29 +46,32 @@ function applyOp(col, op, val, conditions, params) {
       break;
   }
 }
-
+ 
+// buildFilter returns { conditions, params } where conditions is a plain string
+// (no WHERE prefix) so it can be safely embedded anywhere.
+// Call toClause() on the result to get the full WHERE clause for top-level queries.
 function buildFilter(filter, fieldMap) {
-  if (!filter) return { clause: '', params: [] };
-  const conditions = [];
-  const params     = [];
-
+  if (!filter) return { conditions: '', params: [] };
+  const parts  = [];
+  const params = [];
+ 
   function processFilter(f) {
     for (const [field, opInput] of Object.entries(f)) {
       if (field === 'and' && Array.isArray(opInput)) {
-        const parts = opInput.map(sub => buildFilter(sub, fieldMap));
-        const valid = parts.filter(p => p.clause);
+        const subs = opInput.map(sub => buildFilter(sub, fieldMap));
+        const valid = subs.filter(s => s.conditions);
         if (valid.length) {
-          conditions.push('(' + valid.map(p => p.clause).join(' AND ') + ')');
-          valid.forEach(p => params.push(...p.params));
+          parts.push('(' + valid.map(s => s.conditions).join(' AND ') + ')');
+          valid.forEach(s => params.push(...s.params));
         }
         continue;
       }
       if (field === 'or' && Array.isArray(opInput)) {
-        const parts = opInput.map(sub => buildFilter(sub, fieldMap));
-        const valid = parts.filter(p => p.clause);
+        const subs = opInput.map(sub => buildFilter(sub, fieldMap));
+        const valid = subs.filter(s => s.conditions);
         if (valid.length) {
-          conditions.push('(' + valid.map(p => p.clause).join(' OR ') + ')');
-          valid.forEach(p => params.push(...p.params));
+          parts.push('(' + valid.map(s => s.conditions).join(' OR ') + ')');
+          valid.forEach(s => params.push(...s.params));
         }
         continue;
       }
@@ -76,16 +79,22 @@ function buildFilter(filter, fieldMap) {
       if (typeof opInput !== 'object' || opInput === null) continue;
       const col = fieldMap[field];
       for (const [op, val] of Object.entries(opInput)) {
-        if (val !== undefined && val !== null) applyOp(col, op, val, conditions, params);
+        if (val !== undefined && val !== null) applyOp(col, op, val, parts, params);
       }
     }
   }
-
+ 
   processFilter(filter);
-  const clause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-  return { clause, params };
+  const conditions = parts.join(' AND ');
+  return { conditions, params };
 }
-
+ 
+// Convenience: wrap conditions in WHERE for top-level queries
+function toWhereClause(filter, fieldMap) {
+  const { conditions, params } = buildFilter(filter, fieldMap);
+  return { clause: conditions ? `WHERE ${conditions}` : '', params };
+}
+ 
 function buildOrder(order, fieldMap) {
   if (!order || order.length === 0) return '';
   const parts = [];
@@ -98,32 +107,34 @@ function buildOrder(order, fieldMap) {
   }
   return parts.length > 0 ? 'ORDER BY ' + parts.join(', ') : '';
 }
-
+ 
+// Merge a fixed FK constraint with an optional caller-supplied filter.
+// The FK is always the first condition; the filter conditions are appended with AND.
 function mergeWhere(fixedCol, fixedVal, filter, fieldMap) {
-  const base = { clause: `WHERE ${fixedCol} = ?`, params: [fixedVal] };
-  if (!filter) return base;
-  const extra = buildFilter(filter, fieldMap);
-  if (!extra.clause) return base;
+  const { conditions, params } = buildFilter(filter, fieldMap);
+  if (!conditions) {
+    return { clause: `WHERE ${fixedCol} = ?`, params: [fixedVal] };
+  }
   return {
-    clause: `WHERE ${fixedCol} = ? AND (${extra.clause.replace('WHERE ', '')})`,
-    params: [fixedVal, ...extra.params],
+    clause: `WHERE ${fixedCol} = ? AND (${conditions})`,
+    params: [fixedVal, ...params],
   };
 }
-
+ 
 // ─── Field maps (GraphQL field → SQL column) ──────────────────────────────────
-
+ 
 const clientFields = {
   clientID: 'clientID', bsn: 'bsn', leefeenheid: 'leefeenheid',
   huisarts: 'huisarts', communicatievorm: 'communicatievorm', taal: 'taal',
 };
-
+ 
 const bemiddelingFields = {
   bemiddelingID: 'bemiddelingID', wlzIndicatieID: 'wlzIndicatieID',
   verantwoordelijkZorgkantoor: 'verantwoordelijkZorgkantoor',
   verantwoordelijkheidIngangsdatum: 'verantwoordelijkheidIngangsdatum',
   verantwoordelijkheidEinddatum: 'verantwoordelijkheidEinddatum',
 };
-
+ 
 const bemiddelingspecificatieFields = {
   bemiddelingspecificatieID: 'bemiddelingspecificatieID',
   leveringsvorm: 'leveringsvorm', zzpCode: 'zzpCode',
@@ -136,26 +147,26 @@ const bemiddelingspecificatieFields = {
   etmalen: 'etmalen', instellingBestemming: 'instellingBestemming',
   soortToewijzing: 'soortToewijzing',
 };
-
+ 
 const overdrachtFields = {
   overdrachtID: 'overdrachtID',
   verantwoordelijkZorgkantoor: 'verantwoordelijkZorgkantoor',
   overdrachtDatum: 'overdrachtDatum', verhuisDatum: 'verhuisDatum',
   vaststellingMoment: 'vaststellingMoment',
 };
-
+ 
 const overdrachtspecificatieFields = {
   overdrachtspecificatieID: 'overdrachtspecificatieID',
   leveringsstatus: 'leveringsstatus',
   leveringsstatusClassificatie: 'leveringsstatusClassificatie',
   oorspronkelijkeToewijzingEinddatum: 'oorspronkelijkeToewijzingEinddatum',
 };
-
+ 
 const regiehouderFields = {
   regiehouderID: 'regiehouderID', instelling: 'instelling',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum', regierol: 'regierol',
 };
-
+ 
 const contactpersoonFields = {
   contactpersoonID: 'contactpersoonID', relatienummer: 'relatienummer',
   volgorde: 'volgorde', soortRelatie: 'soortRelatie', rol: 'rol',
@@ -167,7 +178,7 @@ const contactpersoonFields = {
   geboortedatum: 'geboortedatum', geboortedatumgebruik: 'geboortedatumgebruik',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
-
+ 
 const clientContactgegevensFields = {
   clientContactgegevensID: 'clientContactgegevensID',
   adressoort: 'adressoort', straatnaam: 'straatnaam',
@@ -179,7 +190,7 @@ const clientContactgegevensFields = {
   telefoonnummer02: 'telefoonnummer02', landnummer02: 'landnummer02',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
-
+ 
 const contactpersoonContactgegevensFields = {
   contactpersoonContactgegevensID: 'contactpersoonContactgegevensID',
   adressoort: 'adressoort', straatnaam: 'straatnaam',
@@ -191,34 +202,34 @@ const contactpersoonContactgegevensFields = {
   telefoonnummer02: 'telefoonnummer02', landnummer02: 'landnummer02',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
-
+ 
 // ─── Resolvers ────────────────────────────────────────────────────────────────
-
+ 
 function buildResolvers(db) {
   return {
     Query: {
       client: (_, { where }) => {
-        const { clause, params } = buildFilter(where, clientFields);
+        const { clause, params } = toWhereClause(where, clientFields);
         return queryAll(db, `SELECT * FROM Client ${clause}`, params);
       },
       bemiddeling: (_, { where }) => {
-        const { clause, params } = buildFilter(where, bemiddelingFields);
+        const { clause, params } = toWhereClause(where, bemiddelingFields);
         return queryAll(db, `SELECT * FROM Bemiddeling ${clause}`, params);
       },
       bemiddelingspecificatie: (_, { where }) => {
-        const { clause, params } = buildFilter(where, bemiddelingspecificatieFields);
+        const { clause, params } = toWhereClause(where, bemiddelingspecificatieFields);
         return queryAll(db, `SELECT * FROM Bemiddelingspecificatie ${clause}`, params);
       },
       overdracht: (_, { where }) => {
-        const { clause, params } = buildFilter(where, overdrachtFields);
+        const { clause, params } = toWhereClause(where, overdrachtFields);
         return queryAll(db, `SELECT * FROM Overdracht ${clause}`, params);
       },
       regiehouder: (_, { where }) => {
-        const { clause, params } = buildFilter(where, regiehouderFields);
+        const { clause, params } = toWhereClause(where, regiehouderFields);
         return queryAll(db, `SELECT * FROM Regiehouder ${clause}`, params);
       },
     },
-
+ 
     Client: {
       clientID: (p) => p.clientID,
       bemiddeling: (p, { where, order }) => {
@@ -234,7 +245,7 @@ function buildResolvers(db) {
         return queryAll(db, `SELECT * FROM ClientContactgegevens ${clause} ${buildOrder(order, clientContactgegevensFields)}`, params);
       },
     },
-
+ 
     Bemiddeling: {
       bemiddelingID: (p) => p.bemiddelingID,
       client: (p) =>
@@ -250,7 +261,7 @@ function buildResolvers(db) {
       overdracht: (p) =>
         queryOne(db, 'SELECT * FROM Overdracht WHERE bemiddelingID = ?', [p.bemiddelingID]),
     },
-
+ 
     Bemiddelingspecificatie: {
       bemiddelingspecificatieID: (p) => p.bemiddelingspecificatieID,
       percentage:    (p) => p.percentage    != null ? Number(p.percentage)    : null,
@@ -260,7 +271,7 @@ function buildResolvers(db) {
       overdrachtspecificatie: (p) =>
         queryOne(db, 'SELECT * FROM Overdrachtspecificatie WHERE bemiddelingspecificatieID = ?', [p.bemiddelingspecificatieID]),
     },
-
+ 
     Overdracht: {
       overdrachtID: (p) => p.overdrachtID,
       bemiddeling: (p) =>
@@ -270,7 +281,7 @@ function buildResolvers(db) {
         return queryAll(db, `SELECT * FROM Overdrachtspecificatie ${clause} ${buildOrder(order, overdrachtspecificatieFields)}`, params);
       },
     },
-
+ 
     Overdrachtspecificatie: {
       overdrachtspecificatieID: (p) => p.overdrachtspecificatieID,
       overdracht: (p) =>
@@ -278,13 +289,13 @@ function buildResolvers(db) {
       bemiddelingspecificatie: (p) =>
         queryOne(db, 'SELECT * FROM Bemiddelingspecificatie WHERE bemiddelingspecificatieID = ?', [p.bemiddelingspecificatieID]),
     },
-
+ 
     Regiehouder: {
       regiehouderID: (p) => p.regiehouderID,
       bemiddeling: (p) =>
         queryOne(db, 'SELECT * FROM Bemiddeling WHERE bemiddelingID = ?', [p.bemiddelingID]),
     },
-
+ 
     Contactpersoon: {
       contactpersoonID: (p) => p.contactpersoonID,
       client: (p) =>
@@ -294,14 +305,14 @@ function buildResolvers(db) {
         return queryAll(db, `SELECT * FROM ContactpersoonContactgegevens ${clause} ${buildOrder(order, contactpersoonContactgegevensFields)}`, params);
       },
     },
-
+ 
     ClientContactgegevens: {
       clientContactgegevensID: (p) => p.clientContactgegevensID,
       huisnummer: (p) => p.huisnummer != null ? Number(p.huisnummer) : null,
       client: (p) =>
         queryOne(db, 'SELECT * FROM Client WHERE clientID = ?', [p.clientID]),
     },
-
+ 
     ContactpersoonContactgegevens: {
       contactpersoonContactgegevensID: (p) => p.contactpersoonContactgegevensID,
       huisnummer: (p) => p.huisnummer != null ? Number(p.huisnummer) : null,
@@ -310,57 +321,36 @@ function buildResolvers(db) {
     },
   };
 }
-
+ 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-
+ 
 async function main() {
   const SQL = await initSqlJs();
   const db  = fs.existsSync(DB_PATH)
     ? new SQL.Database(fs.readFileSync(DB_PATH))
     : new SQL.Database();
-
+ 
   initDb(db, DB_PATH);
   seedDb(db, DB_PATH);
-
+ 
   const typeDefs  = fs.readFileSync(SCHEMA_PATH, 'utf8');
   const resolvers = buildResolvers(db);
-
+ 
   const yoga = createYoga({
     schema: createSchema({ typeDefs, resolvers }),
     logging: true,
   });
-
+ 
   createServer(yoga).listen(4000, () => {
     console.log('');
     console.log('  ✅  iWlz Bemiddelingsregister GraphQL server running');
     console.log('  🌐  http://localhost:4000/graphql');
     console.log('');
-    console.log('  Probeer deze query in GraphiQL:');
-    console.log('');
-    console.log('  query test {');
-    console.log('    bemiddelingspecificatie(');
-    console.log('      where: {');
-    console.log('        bemiddelingspecificatieID: {eq: "aaaaaaaa-0003-4000-a000-000000000003"}');
-    console.log('      }');
-    console.log('    ) {');
-    console.log('      bemiddelingspecificatieID');
-    console.log('      toewijzingIngangsdatum');
-    console.log('      toewijzingEinddatum');
-    console.log('      soortToewijzing');
-    console.log('      bemiddeling {');
-    console.log('        bemiddelingID');
-    console.log('        verantwoordelijkZorgkantoor');
-    console.log('      }');
-    console.log('    }');
-    console.log('  }');
-    console.log('');
-    console.log('');
-    console.log('  Om de server te stoppen, druk op Ctrl+C');
-    console.log('');
   });
 }
-
+ 
 main().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+ 
