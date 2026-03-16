@@ -19,34 +19,59 @@ Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite`
 
 1. Ga naar [nodejs.org/en/download](nodejs.org/en/download). 
 2. Download het Windows-bestand (Standalone Binary (.zip)) — niet het installatieprogramma. (N.B. deze setup is gemaakt met v24.14.0(LTS))
-3. Pak het uit op een locatie zoals `D:\graphql\node`  - Let op! NIET in een *sharepoint* of *onedrive* folder plaatsten
-4. Voeg de Node-map toe aan je PATH voor de huidige sessie met behulp van een batchbestand (zie hieronder), of verwijs er direct naar.
+3. Pak het uit op een locatie zoals bijvoorbeeld: `C:\graphql\node`  - Let op! NIET in een *sharepoint* of *onedrive* folder plaatsen!
+4. Voeg de Node-map toe aan je PATH-variabele voor de huidige sessie met behulp van een batchbestand (zie stap 4), of verwijs er direct naar.
 
 ### Stap 2: Bemiddelingsregister downloaden en installeren
 
-1. Ga naar [github.com/rvanrest/LocalBemiddelingsregister/releases]()
+1. Ga naar [https://github.com/rvanrest/local_graphql_BR/releases](https://github.com/rvanrest/local_graphql_BR/releases)
 2. Download het de laatste release (.zip)
-3. Pak het uit op de locatie waar ook `node` staat zoals `D:\graphql\iWlz-Bemiddelingsregister1`
+3. Pak het uit in een nieuwe folder waar ook de folder `\node` staat zoals bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`
 
 
-Wanneer de installatie goed is gedaan heb je onder jouw gekozen root-directory (`D:\graphql`) de volgende structuur:
-```
-D:\graphql\
-  ├── iWlz-Bemiddelingsregister1\
-  │   ├── node_modules\                   ← directory met ondersteunende modules (oa. graphql-ondersteuning)
-  │   ├── bemiddelingsregister.graphql    ← graphql-schema
-  │   ├── bemiddelingsregisterDB.db       ← database, met testdata
-  │   ├── db-helpers.js                   ← gedeelde sql.js utilities  
-  │   ├── db.js                           ← tabel definities + seed data (wanneer er geen database-file aanwezig is)   
-  │   ├── package-lock.json               ← 
-  │   ├── package.json                    ← 
-  │   ├── readme.md                       ← dit bestand
-  │   ├── server_bemiddeling.js           ← server configuratie   
-  │   └── start.bat                       ← om de omgeving op te starten start 
-  └── node\                               ← directory met node-files
-```
+### Stap 3. Benodigde `node_modules` installeren
 
-### Stap 3: Pas het opstart-bestand `start.bat` aan
+1. Open het programma *Visual Studio Code* (VSC)
+2. Open de installatie-folder waar het Bemiddelingsregister staat in VSC, (`Ctrl`+`K`, `Ctrl`+`O`) of (`File`> `Open Folder`),  *bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`*
+3. Open een terminal-window (`Ctrl`+`Shift`+ `` ` `` ) of (`Terminal` > `New Terminal`). 
+4. Controleer of het nieuwe terminal-window opent in jouw installatie-folder, *bijvoorbeeld: `PS C:\graphql\iWlz-Bemiddelingsregister1>`*
+5. Als dit niet het geval is zorg dan dat dit pad zichtbaar is in jouw terminal-window.
+6. Voer vervolgens in de folder met de Bemiddelingsregister bestanden het volgende commando uit: 
+   ```bash
+    ..\node\npm config set strict-ssl false
+   ```
+   *(inclusief twee punten vooraan)*
+7. En daarna: 
+   ```bash
+    ..\node\npm install
+   ```
+   Als alles goed verloopt krijg je de volgende response:
+   ```bash
+    added 29 packages, and audited 30 packages in 11s
+
+    found 0 vulnerabilities
+    ```
+
+    Na de installatie van alle benodigde modules zit de folder er als volgt uit:
+
+    ```
+    C:\graphql\
+      ├── iWlz-Bemiddelingsregister1\
+      │   ├── node_modules\                   ← directory met ondersteunende modules (oa. graphql-ondersteuning)
+      │   ├── .gitignore                      ← (het kan zijn dat je dit bestand niet ziet, kan geen kwaad)
+      │   ├── bemiddelingsregister.graphql    ← graphql-schema
+      │   ├── bemiddelingsregisterDB.db       ← database, met testdata
+      │   ├── db-helpers.js                   ← gedeelde sql.js utilities  
+      │   ├── db.js                           ← tabel definities + seed data (wanneer er geen database-file aanwezig is)   
+      │   ├── package-lock.json               ← 
+      │   ├── package.json                    ← 
+      │   ├── README.md                       ← dit bestand
+      │   ├── server_bemiddeling.js           ← server configuratie   
+      │   └── start.bat                       ← om de omgeving op te starten start 
+      └── node\                               ← directory met node-files
+    ```
+
+### Stap 4: Pas het opstart-bestand `start.bat` aan
 
 Met `start.bat` wordt de lokale graphql-server omgeving opgestart. Deze moet eerst worden aangepast aan de lokale installatie situatie. 
 
@@ -54,13 +79,14 @@ Met `start.bat` wordt de lokale graphql-server omgeving opgestart. Deze moet eer
 2. Pas (alleen) het pad naar de locatie van jouw `node` folder aan 
 3. Sla het bestand op
 
-De inhoud van `start.bat` ziet er na de aanpassing naar `D:\graphql\node` als volgt uit:
+De inhoud van `start.bat` ziet er na de aanpassing naar `C:\graphql\node` als volgt uit:
+
 ```bat
-  @echo off
-  SET PATH=D:\graphql\node;%PATH%
-  cd /d %~dp0
-  node server.js
-  pause
+    @echo off
+      SET PATH=C:\graphql\node;%PATH%
+      cd /d %~dp0
+      node server.js
+      pause
 ```
 
 
@@ -72,9 +98,9 @@ Om de GraphQL omgeving met het Bemiddelingsregister lokaal op te starten gebruik
 We maken gebruik van het programma *Visual Studio Code* om de server op te starten. 
 
 1. Open het programma *Visual Studio Code* (VSC)
-2. Open de installatie-folder waar het Bemiddelingsregister staat in VSC, (`Ctrl`+`K`, `Ctrl`+`O`) of (`File`> `Open Folder`),  *bijvoorbeeld: `D:\graphql\iWlz-Bemiddelingsregister1`*
+2. Open de installatie-folder waar het Bemiddelingsregister staat in VSC, (`Ctrl`+`K`, `Ctrl`+`O`) of (`File`> `Open Folder`),  *bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`*
 3. Open een terminal-window (`Ctrl`+`Shift`+ `` ` `` ) of (`Terminal` > `New Terminal`). 
-4. Controleer of het nieuwe terminal-window opent in jouw installatie-folder, *bijvoorbeeld: `D:\graphql\iWlz-Bemiddelingsregister1`*
+4. Controleer of het nieuwe terminal-window opent in jouw installatie-folder, *bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`*
 5. Als dit niet het geval is zorg dan dat dit pad zichtbaar is in jouw terminal-window.
 6. Controleer of het bestand `start.bat` aanwezig is. Type hiervoor `dir` in het terminal-window en druk op [`enter`]. Je krijgt dan een lijst, die overeenkomt met de lijst in VSC. 
 7. Klopt alles, type dan `.\start.bat` in het terminal-window (inclusief punt en backslash) en druk op [`enter`]
@@ -135,27 +161,29 @@ Zorg dat de Graphql-server draait.
 1. Ga naar de koppelvlakspecificatie van het [Bemiddelingsregister](https://github.com/iStandaarden/iWlz-bemiddeling/) en kopieer (raw-copy) daar de inhoud van: `QBR-0002-ZA.graphql`
 2. Plak de query in het query-venster
 3. Plak de onderstaande json in het venster *Variables* onderop het query-venster
-   ```json
+    ```json
+      {
+       "bemiddelingspecificatieID": "4c46c5dc-489e-40e1-9d8f-ba2881112e8f",
+       "instelling": "51510101",
+       "toewijzingIngangsdatum": "2022-01-01",
+       "vaststellingMoment": "2022-01-01T00:00:00.000+01:00",
+       "dagVaststellingMoment": "2022-01-01",
+        "toewijzingEinddatum": "2022-12-31"
+      }
+    ```
+    of 
+    ```json
     {
-      "bemiddelingspecificatieID": "4c46c5dc-489e-40e1-9d8f-ba2881112e8f",
-      "instelling": "51510101",
-      "toewijzingIngangsdatum": "2022-01-01",
-      "vaststellingMoment": "2022-01-01T00:00:00.000+01:00",
-      "dagVaststellingMoment": "2022-01-01",
-      "toewijzingEinddatum": "2022-12-31"
+      "bemiddelingspecificatieID": "8bcba75f-c44e-4f7d-ae8f-f0912757c6b2",
+      "instelling": "54540707",
+      "toewijzingIngangsdatum": "2021-05-07",
+      "vaststellingMoment": "2021-09-07T00:00:00.000+01:00",
+      "dagVaststellingMoment": "2021-09-07",
+      "toewijzingEinddatum": "2021-09-07"
     }
-   ```
-of 
-```json
-{
-  "bemiddelingspecificatieID": "8bcba75f-c44e-4f7d-ae8f-f0912757c6b2",
-  "instelling": "54540707",
-  "toewijzingIngangsdatum": "2021-05-07",
-  "vaststellingMoment": "2021-09-07T00:00:00.000+01:00",
-  "dagVaststellingMoment": "2021-09-07",
-  "toewijzingEinddatum": "2021-09-07"
-}
-```
+    ```
+4. Bekijk het resultaat
+
 ---
 
 Got it. This is the Dutch Wlz (long-term care) Indicatieregister schema — a read-only (Query only, no Mutations) schema with a deeply nested structure. Let me build the full solution.Now let me build the complete solution — the schema file, the SQLite table setup, and the full server with resolvers for this deeply nested structure:Here's what was built and why each decision was made:

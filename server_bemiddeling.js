@@ -346,6 +346,29 @@ async function main() {
     console.log('  ✅  iWlz Bemiddelingsregister GraphQL server running');
     console.log('  🌐  http://localhost:4000/graphql');
     console.log('');
+    console.log('  Probeer deze query in GraphiQL:');
+    console.log('');
+    console.log('  query test {');
+    console.log('    bemiddelingspecificatie(');
+    console.log('      where: {');
+    console.log('        bemiddelingspecificatieID: {eq: "aaaaaaaa-0003-4000-a000-000000000003"}');
+    console.log('      }');
+    console.log('    ) {');
+    console.log('      bemiddelingspecificatieID');
+    console.log('      toewijzingIngangsdatum');
+    console.log('      toewijzingEinddatum');
+    console.log('      soortToewijzing');
+    console.log('      bemiddeling {');
+    console.log('        bemiddelingID');
+    console.log('        verantwoordelijkZorgkantoor');
+    console.log('      }');
+    console.log('    }');
+    console.log('  }');
+    console.log('');
+    console.log('');
+    console.log('  Om de server te stoppen, druk op Ctrl+C');
+    console.log('');
+    console.log('');
   });
 }
  
