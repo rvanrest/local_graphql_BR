@@ -30,9 +30,10 @@ Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite`
 
 ### Stap 2: Bemiddelingsregister downloaden en installeren
 
-1. Ga naar [https://github.com/rvanrest/local_graphql_BR/releases](https://github.com/rvanrest/local_graphql_BR/releases)
-2. Download het de laatste release (.zip)
-3. Pak het uit in een nieuwe folder waar ook de folder `\node` staat zoals bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`
+1. Ga naar [https://github.com/rvanrest/local_graphql_BR/](https://github.com/rvanrest/local_graphql_BR/)
+2. Klik op in de rechter kolom op `Releases` 
+3. Download de `Source code (zip)` van de laatste release 
+4. Pak het bestand uit in een *nieuwe* folder onder de folder waar ook de folder `\node` staat zoals bijvoorbeeld in: `C:\graphql\iWlz-Bemiddelingsregister1` als node in `C:\graphql\node` staat.
 
 
 ### Stap 3. Benodigde `node_modules` installeren
