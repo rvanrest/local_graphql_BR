@@ -8,8 +8,8 @@ Met behulp van de onderstaande stappen en de bestanden uit deze repository kan e
 4. [**Handige tooling**](#handige-tools)
 5. [**Disclaimer toegangscontrole**](#disclaimer-toegangscontrole)
 
- ![Laatste release](https://img.shields.io/github/v/release/rvanrest/local_graphql_BR?style=flat-square)
-
+![GitHub Release](https://img.shields.io/github/v/release/rvanrest/local_graphql_BR?display_name=release)
+![GitHub Release Date](https://img.shields.io/github/release-date/rvanrest/local_graphql_BR)
 
 
 ---
