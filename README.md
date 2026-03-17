@@ -4,11 +4,17 @@ Met behulp van de onderstaande stappen en de bestanden uit deze repository kan e
 ### **Inhoud**
 1. [**Setup omgeving**](#setup-omgeving)
 2. [**Bemiddelingsregister opstarten**](#bemiddelingsregister-opstarten) 
-3. [**Beschikbare data**]
-4. [**Handige tooling**]
-5. Meer informatie
+3. [**Beschikbare data**](#beschikbare-data)
+4. [**Handige tooling**](#handige-tools)
+5. [**Disclaimer toegangscontrole**](#disclaimer-toegangscontrole)
 
-## Setup omgeving
+ ![Laatste release](https://img.shields.io/github/v/release/rvanrest/local_graphql_BR?style=flat-square)
+
+
+
+---
+
+# Setup omgeving
 De sleutel is het gebruik van een *portable* `Node.js` (een zip-distributie, geen installatie nodig) variant en door alles in één map te bewaren. 
 
 Naast `node.js` (https://nodejs.org/en) maakt de installatie gebruik van `Yoga-graphql server` (https://the-guild.dev/graphql/yoga-server) en `SQLite3` (https://sqlite.org/index.html). 
@@ -34,13 +40,14 @@ Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite`
 1. Open het programma *Visual Studio Code* (VSC)
 2. Open de installatie-folder waar het Bemiddelingsregister staat in VSC, (`Ctrl`+`K`, `Ctrl`+`O`) of (`File`> `Open Folder`),  *bijvoorbeeld: `C:\graphql\iWlz-Bemiddelingsregister1`*
 3. Open een terminal-window (`Ctrl`+`Shift`+ `` ` `` ) of (`Terminal` > `New Terminal`). 
-4. Controleer of het nieuwe terminal-window opent in jouw installatie-folder, *bijvoorbeeld: `PS C:\graphql\iWlz-Bemiddelingsregister1>`*
+4. Controleer of het nieuwe terminal-window opent in jouw installatie-folder,  
+   *bijvoorbeeld: `"PS C:\graphql\iWlz-Bemiddelingsregister1>"`*
 5. Als dit niet het geval is zorg dan dat dit pad zichtbaar is in jouw terminal-window.
 6. Voer vervolgens in de folder met de Bemiddelingsregister bestanden het volgende commando uit: 
    ```bash
     ..\node\npm config set strict-ssl false
    ```
-   *(inclusief twee punten vooraan)*
+   *(inclusief de twee punten vooraan)*
 7. En daarna: 
    ```bash
     ..\node\npm install
@@ -89,9 +96,12 @@ De inhoud van `start.bat` ziet er na de aanpassing naar `C:\graphql\node` als vo
       pause
 ```
 
+### Stap 5: Opstarten Bemiddelingsregister
+Je hebt nu alle benodigde stappen ondernomen om een GraphQL-server op te starten op basis van het schema van het Bemiddelingsregister. Ga hiervoor naar het volgende onderdeel [Bemiddelingsregister opstarten](#bemiddelingsregister-opstarten). 
 
+---
 
-## Bemiddelingsregister opstarten
+# Bemiddelingsregister opstarten
 
 Om de GraphQL omgeving met het Bemiddelingsregister lokaal op te starten gebruik je `start.bat`. Is deze correct aangepast naar de lokale omgeving en bevat die omgeving alle bestanden die nodig zijn dan is er een **Yoga GraphiQL** omgeving beschikbaar op: [http://localhost:4000/graphql](http://localhost:4000/graphql)
 
@@ -182,30 +192,20 @@ Zorg dat de Graphql-server draait.
       "toewijzingEinddatum": "2021-09-07"
     }
     ```
-4. Bekijk het resultaat
+4. Press Play en bekijk het resultaat.
 
 ---
 
-Got it. This is the Dutch Wlz (long-term care) Indicatieregister schema — a read-only (Query only, no Mutations) schema with a deeply nested structure. Let me build the full solution.Now let me build the complete solution — the schema file, the SQLite table setup, and the full server with resolvers for this deeply nested structure:Here's what was built and why each decision was made:
 
-**Database structure** — The schema's nested types are mapped to 13 relational SQLite tables with foreign keys. `WlzIndicatie` is the root, with everything hanging off it via `wlzindicatieID`. `ContactGegevens` links to either a `Client` or a `ContactPersoon` (nullable FKs), mirroring how the schema uses it for both.
+# Beschikbare data
+De data in de database ([bemiddelingsregisterDB.db](bemiddelingsregisterDB.db) is gebaseerd op de *casuïstiek* van het Estafettemodel iWlz 2.4.3, omgezet naar het netwerkmodel. Hieronder volgt een overzicht en mapping naar de verschillende casuïstiek. Er is een extra casus toegevoegd om `Overdracht` te vullen.
 
-**Resolvers** — Every nested type gets its own resolver that does a targeted SQL lookup by parent ID. So querying `client.contactGegevens.adres` triggers three separate focused queries — clean, lazy, and no over-fetching.
+Een overzicht met de beschikbare testdata is te vinden in het [**overzicht beschikbare data**](beschikbare_data.md). 
 
-**Filter support** — The `WlzIndicatieFilterInput` from the schema is fully implemented, supporting `eq` filters on `wlzindicatieID`, `bsn`, `besluitnummer`, `initieelVerantwoordelijkZorgkantoor`, `afgiftedatum` and `ingangsdatum`.
+Raadpleeg de data door middel van GraphQL of gebruik een SQLite viewer. Dit kan door het installeren van een extensie in Visual Studio Code ([SQLite3 Editor](https://marketplace.visualstudio.com/items?itemName=yy0931.vscode-sqlite3-editor)) of met [DB Browser for SQLite - Portable](https://portableapps.com/apps/development/sqlite_database_browser_portable).
 
-**Deprecated fields** — Fields marked `@deprecated` in the schema (like `id` on most types) still resolve correctly — they just point to the same value as the new ID field.
-
-**Seed data** — One complete `WlzIndicatie` record is inserted on first run so you can immediately test queries in GraphiQL without needing to add data first.
-
-Just drop this `server.js` into your project folder alongside the original `schema.graphql` file (save the raw GitHub content as `schema.graphql`), then run `node server.js`.
-
-## Data in het register
-De beschikbare data is gebaseerd op de *casuistiek* van het Estafettemodel iWlz 2.4.3, omgezet naar het netwerkmodel. Hieronder volgt een overzicht en mapping naar de verschillende casuistiek. Er is een extra casus toegevoegd om `Overdracht` te vullen.
-
-
-
-
-## Overige tools
-
-
+## Disclaimer toegangscontrole
+> [!WARNING]
+> Deze installatie bestaat alleen uit een GraphQL-server zodat er queries uitgevoerd kunnen worden en getest op een gewenst resultaat. De toegangscontrole of het uitvoering van policies is **GEEN** onderdeel van deze installatie. 
+>
+> Een zorgaanbieder kan dus gewoon het percentage pgb opvragen omdat hier controle op is. 
