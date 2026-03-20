@@ -55,7 +55,7 @@ Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite`
    ```
    Als alles goed verloopt krijg je de volgende response:
    ```bash
-    added 29 packages, and audited 30 packages in 11s
+    added 30 packages, and audited 31 packages in 1m11s
 
     found 0 vulnerabilities
     ```
@@ -71,8 +71,8 @@ Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite`
       │   ├── bemiddelingsregisterDB.db       ← database, met testdata
       │   ├── db-helpers.js                   ← gedeelde sql.js utilities  
       │   ├── db.js                           ← tabel definities + seed data (wanneer er geen database-file aanwezig is)   
-      │   ├── package-lock.json               ← 
-      │   ├── package.json                    ← 
+      │   ├── package-lock.json               ← npm package configuration
+      │   ├── package.json                    ← npm package installation
       │   ├── README.md                       ← dit bestand
       │   ├── server_bemiddeling.js           ← server configuratie   
       │   └── start.bat                       ← om de omgeving op te starten start 
