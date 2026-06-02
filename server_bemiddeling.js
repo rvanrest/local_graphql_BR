@@ -16,8 +16,14 @@ const SCHEMA_PATH = path.join(__dirname, 'bemiddelingsregister.graphql');
  
 function applyOp(col, op, val, conditions, params) {
   switch (op) {
-    case 'eq':          conditions.push(`${col} = ?`);           params.push(val);        break;
-    case 'neq':         conditions.push(`${col} != ?`);          params.push(val);        break;
+    case 'eq':
+      if (val === null) { conditions.push(`${col} IS NULL`); }
+      else { conditions.push(`${col} = ?`); params.push(val); }
+      break;
+    case 'neq':
+      if (val === null) { conditions.push(`${col} IS NOT NULL`); }
+      else { conditions.push(`${col} != ?`); params.push(val); }
+      break;
     case 'gt':          conditions.push(`${col} > ?`);           params.push(val);        break;
     case 'ngt':         conditions.push(`NOT ${col} > ?`);       params.push(val);        break;
     case 'gte':         conditions.push(`${col} >= ?`);          params.push(val);        break;
@@ -79,7 +85,7 @@ function buildFilter(filter, fieldMap) {
       if (typeof opInput !== 'object' || opInput === null) continue;
       const col = fieldMap[field];
       for (const [op, val] of Object.entries(opInput)) {
-        if (val !== undefined && val !== null) applyOp(col, op, val, parts, params);
+        if (val !== undefined) applyOp(col, op, val, parts, params);
       }
     }
   }
