@@ -22,7 +22,7 @@ allowed_queries := {
   "admin":         {"client", "bemiddeling", "bemiddelingspecificatie", "overdracht", "regiehouder"},
   "ciz":           {"client", "bemiddeling", "bemiddelingspecificatie", "overdracht", "regiehouder"},
   "zorgkantoor":   {"client", "bemiddeling", "bemiddelingspecificatie", "overdracht", "regiehouder"},
-  "zorgaanbieder": {"bemiddeling", "bemiddelingspecificatie", "regiehouder"},
+  "zorgaanbieder": {"client","bemiddeling", "bemiddelingspecificatie", "regiehouder"},
 }
 
 allow if {

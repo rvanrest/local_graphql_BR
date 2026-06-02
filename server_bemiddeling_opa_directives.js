@@ -6,13 +6,14 @@ const initSqlJs                    = require('sql.js');
 const fs                           = require('fs');
 const path                         = require('path');
 
-const { queryAll, queryOne } = require('./db-helpers');
-const { initDb, seedDb }     = require('./db');
-const { verifyToken }        = require('./auth');
-const { evaluate, healthCheck } = require('./opa');
+const { queryAll, queryOne }         = require('./db-helpers');
+const { initDb, seedDb }             = require('./db');
+const { verifyToken }                = require('./auth');
+const { evaluateQuery, evaluateField, healthCheck } = require('./opa');
+const { parseDirectives, checkFieldAccess }         = require('./schema-directives');
 
-const DB_PATH     = path.join(__dirname, 'bemiddelingsregisterDB.db');
-const SCHEMA_PATH = path.join(__dirname, 'bemiddelingsregister.graphql');
+const DB_PATH     = path.join(__dirname, 'data.db');
+const SCHEMA_PATH = path.join(__dirname, 'schema.graphql');
 
 // ─── Filter builder ───────────────────────────────────────────────────────────
 
@@ -49,7 +50,6 @@ function applyOp(col, op, val, conditions, params) {
   }
 }
 
-// buildFilter returns { conditions, params } — no WHERE prefix, safe for nesting
 function buildFilter(filter, fieldMap) {
   if (!filter) return { conditions: '', params: [] };
   const parts  = [];
@@ -88,13 +88,11 @@ function buildFilter(filter, fieldMap) {
   return { conditions: parts.join(' AND '), params };
 }
 
-// Wraps conditions in WHERE for top-level use
 function toWhereClause(filter, fieldMap) {
   const { conditions, params } = buildFilter(filter, fieldMap);
   return { clause: conditions ? `WHERE ${conditions}` : '', params };
 }
 
-// Merges a mandatory FK condition with optional caller-supplied filter
 function mergeWhere(fixedCol, fixedVal, filter, fieldMap) {
   const { conditions, params } = buildFilter(filter, fieldMap);
   if (!conditions) {
@@ -106,18 +104,25 @@ function mergeWhere(fixedCol, fixedVal, filter, fieldMap) {
   };
 }
 
-// ─── Row filter helper ────────────────────────────────────────────────────────
-// OPA returns a row_filter object like { verantwoordelijkZorgkantoor: "VGZ" }.
-// This appends those conditions to an existing WHERE clause.
+function buildOrder(order, fieldMap) {
+  if (!order || order.length === 0) return '';
+  const parts = [];
+  for (const item of order) {
+    for (const [field, dir] of Object.entries(item)) {
+      if (fieldMap[field] && (dir === 'ASC' || dir === 'DESC')) {
+        parts.push(`${fieldMap[field]} ${dir}`);
+      }
+    }
+  }
+  return parts.length > 0 ? 'ORDER BY ' + parts.join(', ') : '';
+}
 
 function applyRowFilter(existingClause, existingParams, rowFilter) {
   if (!rowFilter || Object.keys(rowFilter).length === 0) {
     return { clause: existingClause, params: existingParams };
   }
-
-  const conditions = Object.entries(rowFilter).map(([col]) => `${col} = ?`);
+  const conditions = Object.keys(rowFilter).map(col => `${col} = ?`);
   const values     = Object.values(rowFilter);
-
   if (existingClause.includes('WHERE')) {
     return {
       clause: `${existingClause} AND ${conditions.join(' AND ')}`,
@@ -130,91 +135,18 @@ function applyRowFilter(existingClause, existingParams, rowFilter) {
   };
 }
 
-// ─── Field masking ────────────────────────────────────────────────────────────
-// Nulls out fields in a result row that OPA did not include in allowed_fields.
-
-function maskFields(row, allowedFields) {
-  if (!allowedFields || allowedFields.size === 0) return row;
-  const masked = { ...row };
-  for (const key of Object.keys(masked)) {
-    if (!allowedFields.has(key)) masked[key] = null;
-  }
-  return masked;
-}
-
-// ─── OPA middleware (Yoga plugin) ─────────────────────────────────────────────
-
-function buildOpaPlugin() {
-  return {
-    async onExecute({ args, setResultAndStopExecution }) {
-      const context = args.contextValue;
-
-      // Extract the root query/operation name from the parsed document
-      const operation = args.document.definitions.find(
-        d => d.kind === 'OperationDefinition'
-      );
-      if (!operation) return;
-
-      const queryName = operation.selectionSet.selections[0]?.name?.value;
-
-      // Introspection queries (__schema, __type, __typename) are used by
-      // GraphiQL to load the schema explorer. They carry no business data
-      // so bypass OPA entirely — but still require a valid token.
-      const isIntrospection =
-        queryName?.startsWith('__') ||
-        operation.selectionSet.selections.every(s => s.name?.value?.startsWith('__'));
-
-      if (isIntrospection) {
-        if (!context.tokenValid) {
-          setResultAndStopExecution({
-            errors: [{ message: context.tokenError || 'Unauthorized' }],
-          });
-        }
-        // Authenticated users may introspect freely — skip OPA
-        return;
-      }
-
-      // All non-introspection queries require a valid token
-      if (!context.tokenValid) {
-        setResultAndStopExecution({
-          errors: [{ message: context.tokenError || 'Unauthorized' }],
-        });
-        return;
-      }
-
-      if (!queryName) return;
-
-      // Ask OPA whether this role may call this query
-      const decision = await evaluate(context.token, queryName);
-
-      if (!decision.allow) {
-        setResultAndStopExecution({
-          errors: [{ message: decision.deny_reason }],
-        });
-        return;
-      }
-
-      // Attach OPA decision to context for resolvers to use
-      context.opaDecision = decision;
-      context.queryName   = queryName;
-    },
-  };
-}
-
-// ─── Field maps (GraphQL field → SQL column) ──────────────────────────────────
+// ─── Field maps ───────────────────────────────────────────────────────────────
 
 const clientFields = {
   clientID: 'clientID', bsn: 'bsn', leefeenheid: 'leefeenheid',
   huisarts: 'huisarts', communicatievorm: 'communicatievorm', taal: 'taal',
 };
-
 const bemiddelingFields = {
   bemiddelingID: 'bemiddelingID', wlzIndicatieID: 'wlzIndicatieID',
   verantwoordelijkZorgkantoor: 'verantwoordelijkZorgkantoor',
   verantwoordelijkheidIngangsdatum: 'verantwoordelijkheidIngangsdatum',
   verantwoordelijkheidEinddatum: 'verantwoordelijkheidEinddatum',
 };
-
 const bemiddelingspecificatieFields = {
   bemiddelingspecificatieID: 'bemiddelingspecificatieID',
   leveringsvorm: 'leveringsvorm', zzpCode: 'zzpCode',
@@ -227,26 +159,22 @@ const bemiddelingspecificatieFields = {
   etmalen: 'etmalen', instellingBestemming: 'instellingBestemming',
   soortToewijzing: 'soortToewijzing',
 };
-
 const overdrachtFields = {
   overdrachtID: 'overdrachtID',
   verantwoordelijkZorgkantoor: 'verantwoordelijkZorgkantoor',
   overdrachtDatum: 'overdrachtDatum', verhuisDatum: 'verhuisDatum',
   vaststellingMoment: 'vaststellingMoment',
 };
-
 const overdrachtspecificatieFields = {
   overdrachtspecificatieID: 'overdrachtspecificatieID',
   leveringsstatus: 'leveringsstatus',
   leveringsstatusClassificatie: 'leveringsstatusClassificatie',
   oorspronkelijkeToewijzingEinddatum: 'oorspronkelijkeToewijzingEinddatum',
 };
-
 const regiehouderFields = {
   regiehouderID: 'regiehouderID', instelling: 'instelling',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum', regierol: 'regierol',
 };
-
 const contactpersoonFields = {
   contactpersoonID: 'contactpersoonID', relatienummer: 'relatienummer',
   volgorde: 'volgorde', soortRelatie: 'soortRelatie', rol: 'rol',
@@ -258,7 +186,6 @@ const contactpersoonFields = {
   geboortedatum: 'geboortedatum', geboortedatumgebruik: 'geboortedatumgebruik',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
-
 const clientContactgegevensFields = {
   clientContactgegevensID: 'clientContactgegevensID',
   adressoort: 'adressoort', straatnaam: 'straatnaam',
@@ -270,7 +197,6 @@ const clientContactgegevensFields = {
   telefoonnummer02: 'telefoonnummer02', landnummer02: 'landnummer02',
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
-
 const contactpersoonContactgegevensFields = {
   contactpersoonContactgegevensID: 'contactpersoonContactgegevensID',
   adressoort: 'adressoort', straatnaam: 'straatnaam',
@@ -283,45 +209,135 @@ const contactpersoonContactgegevensFields = {
   ingangsdatum: 'ingangsdatum', einddatum: 'einddatum',
 };
 
+// ─── OPA plugin ───────────────────────────────────────────────────────────────
+//
+// Two-phase enforcement:
+//
+// Phase 1 (onExecute): Query-level check — block the entire operation if
+//   the role is not permitted to call that root query.
+//
+// Phase 2 (onResolve): Field-level check — for every field that has a
+//   @authorized or @forbidden directive in the schema, ask OPA whether
+//   this role may see it. If not, the field resolves to null + an error.
+
+function buildOpaPlugin(directiveMap) {
+  return {
+    // ── Phase 1: query-level ─────────────────────────────────────────────────
+    async onExecute({ args, setResultAndStopExecution }) {
+      const ctx = args.contextValue;
+
+      const operation = args.document.definitions.find(
+        d => d.kind === 'OperationDefinition'
+      );
+      if (!operation) return;
+
+      const queryName = operation.selectionSet.selections[0]?.name?.value;
+
+      // Introspection queries (__schema, __type, __typename) are GraphQL
+      // meta-queries used by GraphiQL to load the schema explorer.
+      // They carry no business data so bypass OPA entirely.
+      // A valid token is still required so anonymous callers can't introspect.
+      const isIntrospection = queryName?.startsWith('__') ||
+        operation.selectionSet.selections.every(s => s.name?.value?.startsWith('__'));
+
+      if (isIntrospection) {
+        if (!ctx.tokenValid) {
+          setResultAndStopExecution({
+            errors: [{ message: 'Unauthorized: a valid token is required even for introspection' }],
+          });
+        }
+        // Authenticated users may introspect freely — skip OPA
+        return;
+      }
+
+      // All non-introspection queries require a valid token
+      if (!ctx.tokenValid) {
+        setResultAndStopExecution({
+          errors: [{ message: ctx.tokenError || 'Unauthorized: missing or invalid token' }],
+        });
+        return;
+      }
+
+      if (!queryName) return;
+
+      const decision = await evaluateQuery(ctx.token, queryName);
+
+      if (!decision.allow) {
+        setResultAndStopExecution({
+          errors: [{ message: decision.deny_reason }],
+        });
+        return;
+      }
+
+      // Attach OPA decision to context for resolver use
+      ctx.opaDecision = decision;
+      ctx.queryName   = queryName;
+    },
+
+    // ── Phase 2: field-level ─────────────────────────────────────────────────
+    async onResolve({ info, context, replaceResolveResult }) {
+      const typeName  = info.parentType.name;
+      const fieldName = info.fieldName;
+      const key       = `${typeName}.${fieldName}`;
+
+      // Only intercept fields that actually carry a directive
+      const directive = directiveMap[key];
+      if (!directive) return;
+
+      const ctx = context;
+      if (!ctx.tokenValid || !ctx.token) {
+        replaceResolveResult(null);
+        return;
+      }
+
+      // Fast path: check locally first (avoids OPA round-trip for simple cases)
+      const localCheck = checkFieldAccess(directiveMap, typeName, fieldName, ctx.token.role);
+      if (!localCheck.allowed) {
+        // Return null for the field value and surface an error in the response
+        replaceResolveResult(null);
+        // Yoga will include this as a partial error in the response
+        throw Object.assign(
+          new Error(localCheck.reason),
+          { extensions: { code: 'FORBIDDEN', field: key } }
+        );
+      }
+
+      // For cases where OPA needs to make a more complex decision
+      // (e.g. future policies that depend on row data), call OPA too.
+      // For now the local check is sufficient for directive-based rules.
+    },
+  };
+}
+
 // ─── Resolvers ────────────────────────────────────────────────────────────────
 
 function buildResolvers(db) {
   return {
-
     Query: {
-      // Each root resolver applies the OPA row_filter on top of any user-supplied filter
-      client: async (_, { where }, ctx) => {
+      client: (_, { where }, ctx) => {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = toWhereClause(where, clientFields);
         ({ clause, params } = applyRowFilter(clause, params, rowFilter));
-        const rows = queryAll(db, `SELECT * FROM Client ${clause}`, params);
-        // Field masking: ask OPA which Client fields this role may see
-        const decision = await evaluate(ctx.token, ctx.queryName, 'Client');
-        const allowed  = decision.allowed_fields ? new Set(decision.allowed_fields) : null;
-        return rows.map(r => maskFields(r, allowed));
+        return queryAll(db, `SELECT * FROM Client ${clause}`, params);
       },
-
       bemiddeling: (_, { where }, ctx) => {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = toWhereClause(where, bemiddelingFields);
         ({ clause, params } = applyRowFilter(clause, params, rowFilter));
         return queryAll(db, `SELECT * FROM Bemiddeling ${clause}`, params);
       },
-
       bemiddelingspecificatie: (_, { where }, ctx) => {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = toWhereClause(where, bemiddelingspecificatieFields);
         ({ clause, params } = applyRowFilter(clause, params, rowFilter));
         return queryAll(db, `SELECT * FROM Bemiddelingspecificatie ${clause}`, params);
       },
-
       overdracht: (_, { where }, ctx) => {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = toWhereClause(where, overdrachtFields);
         ({ clause, params } = applyRowFilter(clause, params, rowFilter));
         return queryAll(db, `SELECT * FROM Overdracht ${clause}`, params);
       },
-
       regiehouder: (_, { where }, ctx) => {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = toWhereClause(where, regiehouderFields);
@@ -336,8 +352,7 @@ function buildResolvers(db) {
         const rowFilter = ctx.opaDecision?.row_filter ?? {};
         let { clause, params } = mergeWhere('clientID', p.clientID, where, bemiddelingFields);
         ({ clause, params } = applyRowFilter(clause, params, rowFilter));
-        const ord = buildOrder(order, bemiddelingFields);
-        return queryAll(db, `SELECT * FROM Bemiddeling ${clause} ${ord}`, params);
+        return queryAll(db, `SELECT * FROM Bemiddeling ${clause} ${buildOrder(order, bemiddelingFields)}`, params);
       },
       contactpersoon: (p, { where, order }) => {
         const { clause, params } = mergeWhere('clientID', p.clientID, where, contactpersoonFields);
@@ -429,95 +444,57 @@ function buildResolvers(db) {
   };
 }
 
-function buildOrder(order, fieldMap) {
-  if (!order || order.length === 0) return '';
-  const parts = [];
-  for (const item of order) {
-    for (const [field, dir] of Object.entries(item)) {
-      if (fieldMap[field] && (dir === 'ASC' || dir === 'DESC')) {
-        parts.push(`${fieldMap[field]} ${dir}`);
-      }
-    }
-  }
-  return parts.length > 0 ? 'ORDER BY ' + parts.join(', ') : '';
-}
-
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  // Check OPA is running
+  // 1. Parse schema directives — builds the in-memory access control map
+  const directiveMap = parseDirectives(SCHEMA_PATH);
+  const dirCount     = Object.keys(directiveMap).length;
+  console.log(`\n  📋  Schema directives parsed: ${dirCount} field rule(s) found`);
+  for (const [key, rule] of Object.entries(directiveMap)) {
+    if (rule.authorized) console.log(`      @authorized  ${key} → [${rule.authorized.join(', ')}]`);
+    if (rule.forbidden)  console.log(`      @forbidden   ${key} → "${rule.forbidden.reason}"`);
+  }
+
+  // 2. Check OPA is running
   const opaReady = await healthCheck();
   if (!opaReady) {
-    console.error('');
-    console.error('  ❌  OPA sidecar is not running!');
-    console.error('  Start it first with: opa run --server --addr :8181 ./policies');
-    console.error('  Or use start.bat to launch everything together.');
-    console.error('');
+    console.error('\n  ❌  OPA sidecar is not running!');
+    console.error('  Start it with: opa run --server --addr :8181 ./policies');
+    console.error('  Or double-click start.bat\n');
     process.exit(1);
   }
   console.log('  ✅  OPA sidecar reachable at http://localhost:8181');
 
+  // 3. Boot database
   const SQL = await initSqlJs();
   const db  = fs.existsSync(DB_PATH)
     ? new SQL.Database(fs.readFileSync(DB_PATH))
     : new SQL.Database();
-
   initDb(db, DB_PATH);
   seedDb(db, DB_PATH);
 
+  // 4. Build and start Yoga server
   const typeDefs  = fs.readFileSync(SCHEMA_PATH, 'utf8');
   const resolvers = buildResolvers(db);
 
   const yoga = createYoga({
     schema: createSchema({ typeDefs, resolvers }),
     logging: true,
-    plugins: [buildOpaPlugin()],
+    plugins: [buildOpaPlugin(directiveMap)],
 
-    // Verify JWT and attach token to context on every request
     context: async ({ request }) => {
       const authHeader = request.headers.get('authorization');
       const { valid, token, error } = await verifyToken(authHeader);
-      return {
-        tokenValid: valid,
-        tokenError: error,
-        token:      token ?? null,
-      };
+      return { tokenValid: valid, tokenError: error, token: token ?? null };
     },
   });
 
   createServer(yoga).listen(4000, () => {
-    console.log('');
-    console.log('  ✅  iWlz Bemiddelingsregister GraphQL server running');
+    console.log('\n  ✅  iWlz Bemiddelingsregister GraphQL server running');
     console.log('  🌐  http://localhost:4000/graphql');
-    console.log('');
-    console.log('  Probeer deze query in GraphiQL: (niet zeker of dit werkt zonder eerst de JWT te genereren en in te stellen, maar je krijgt in ieder geval een idee van de syntax)');
-    console.log('');
-    console.log('  query test {');
-    console.log('    bemiddelingspecificatie(');
-    console.log('      where: {');
-    console.log('        bemiddelingspecificatieID: {eq: "aaaaaaaa-0003-4000-a000-000000000003"}');
-    console.log('      }');
-    console.log('    ) {');
-    console.log('      bemiddelingspecificatieID');
-    console.log('      toewijzingIngangsdatum');
-    console.log('      toewijzingEinddatum');
-    console.log('      soortToewijzing');
-    console.log('      bemiddeling {');
-    console.log('        bemiddelingID');
-    console.log('        verantwoordelijkZorgkantoor');
-    console.log('      }');
-    console.log('    }');
-    console.log('  }');
-    console.log('');
-    console.log('  First run: node generate-tokens.js  to create test JWTs');
-    console.log('');
-    console.log('  Set Authorization header in GraphiQL:');
-    console.log('  { "Authorization": "Bearer <token from policies/tokens/>" }');
-    console.log('');
-    console.log('');
-    console.log('  Om de server te stoppen, druk op Ctrl+C');
-    console.log('');
-    console.log('');
+    console.log('\n  Set Authorization header in GraphiQL:');
+    console.log('  { "Authorization": "Bearer <token from policies/tokens/>" }\n');
   });
 }
 

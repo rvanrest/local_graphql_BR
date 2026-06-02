@@ -3,10 +3,11 @@ Met behulp van de onderstaande stappen en de bestanden uit deze repository kan e
 
 ### **Inhoud**
 1. [**Setup omgeving**](#setup-omgeving)
-2. [**Bemiddelingsregister opstarten**](#bemiddelingsregister-opstarten) 
-3. [**Beschikbare data**](#beschikbare-data)
-4. [**Handige tooling**](#handige-tools)
-5. [**Disclaimer toegangscontrole**](#disclaimer-toegangscontrole)
+2. [**Bemiddelingsregister opstarten zonder toegangscontrole**](#bemiddelingsregister-opstarten-zonder-toegangscontrole)
+3. [**Bemiddelingsregister opstarten met toegangscontrole**]() 
+4. [**Beschikbare data**](#beschikbare-data)
+5. [**Handige tooling**](#handige-tools)
+
 
 ![GitHub Release](https://img.shields.io/github/v/release/rvanrest/local_graphql_BR?display_name=release)
 ![GitHub Release Date](https://img.shields.io/github/release-date/rvanrest/local_graphql_BR)
@@ -17,11 +18,11 @@ Met behulp van de onderstaande stappen en de bestanden uit deze repository kan e
 # Setup omgeving
 De sleutel is het gebruik van een *portable* `Node.js` (een zip-distributie, geen installatie nodig) variant en door alles in één map te bewaren. 
 
-Naast `node.js` (https://nodejs.org/en) maakt de installatie gebruik van `Yoga-graphql server` (https://the-guild.dev/graphql/yoga-server) en `SQLite3` (https://sqlite.org/index.html). 
+Naast [`node.js`](https://nodejs.org/en) maakt de installatie gebruik van [`Yoga-graphql server`](https://the-guild.dev/graphql/yoga-server) en [`SQLite3`](https://sqlite.org/index.html). 
 
-Alleen `node.js` dient apart geïnstalleerd te worden. `Yoga-server` en `SQLite` worden mee geïnstalleerd via de GitHub download. 
+Volg de installatie stappen hieronder. 
 
-### Stap 1: Portable Node.js downloaden en *installeren* 
+### Stap 1: Portable Node.js downloaden en installeren 
 
 1. Ga naar [nodejs.org/en/download](nodejs.org/en/download). 
 2. Download het Windows-bestand (Standalone Binary (.zip)) — niet het installatieprogramma. (N.B. deze setup is gemaakt met v24.14.0(LTS))
@@ -102,7 +103,13 @@ Je hebt nu alle benodigde stappen ondernomen om een GraphQL-server op te starten
 
 ---
 
-# Bemiddelingsregister opstarten
+# Bemiddelingsregister opstarten zonder toegangscontrole
+
+> [!NOTE]
+> 
+> Deze installatie bestaat alleen uit een GraphQL-server zodat er queries uitgevoerd kunnen worden en getest op een gewenst resultaat. De toegangscontrole of het uitvoering van policies is **GEEN** onderdeel van deze installatie. 
+>
+> Een zorgaanbieder kan dus gewoon het percentage pgb opvragen omdat hier controle op is. 
 
 Om de GraphQL omgeving met het Bemiddelingsregister lokaal op te starten gebruik je `start.bat`. Is deze correct aangepast naar de lokale omgeving en bevat die omgeving alle bestanden die nodig zijn dan is er een **Yoga GraphiQL** omgeving beschikbaar op: [http://localhost:4000/graphql](http://localhost:4000/graphql)
 
@@ -197,6 +204,69 @@ Zorg dat de Graphql-server draait.
 
 ---
 
+# Bemiddelingsregister opstarten met toegangscontrole
+
+> [!NOTE]
+> 
+> Deze installatie is gebaseerd op de installatie op de basis installatie beschreven onder: [Setup omgeving](#setup-omgeving). Voltooi deze voordat je verder gaat met de stappen die hieronder zijn beschreven. 
+> 
+> Dit vervolg zorgt dat er een access-token moet worden meegegeven bij een query. Daarmee kan gevalideerd worden of de query gerechtvaardigd is voor de rol in de token. 
+>
+> Een zorgaanbieder mag dan het percentage pgb of Overdracht NIET opvragen. 
+>
+
+## Toegangscontrole door OPA
+
+De installatie is gebaseerd op de volgende componenten: 
+
+- **Identiteit**: JWT token in `Authorization: Bearer <token>` header — industry standard. `Node` kan dit verifiëren zonder beheertools met behulp van het pure-JS `jose`-pakket
+- **Toegangscontrole**: Combinatie — per querytype + per veld (BSN gemaskeerd voor niet-bevoorrechte rollen) + per rij (zorgkantoor ziet alleen eigen records)
+- **Rollen**: admin, zorgkantoor, zorgaanbieder, ciz
+- **OPA**: draait als een draagbare binaire sidecar, beleidsregels in `.rego`-bestanden
+
+**Schematisch:**
+```
+GraphQL Client
+      │
+      ▼
+Yoga Server (port 4000)
+      │  before executing any resolver
+      ▼
+OPA Sidecar (port 8181)   ←── policies/*.rego files
+      │  allow / deny decision
+      ▼
+Yoga Server continues or throws Forbidden
+```
+
+## Installatie
+
+### 1. Installatie OPA-module
+
+1. Download de OPA-executable `opa_windows_amd64.exe` vanaf https://github.com/open-policy-agent/opa/releases/latest 
+2. Hernoem het bestand naar `opa.exe`
+3. Plaats in de project-folder 
+
+### 2. Installeer de module voor de JWT-token
+
+1. alkdjf;
+
+
+
+```bash
+npm install jose
+```
+
+`jose` is pure JavaScript — no native binaries, no compilation.
+
+### Step 3 — Updated project structure
+
+
+
+
+
+
+---
+
 
 # Beschikbare data
 De data in de database ([bemiddelingsregisterDB.db](bemiddelingsregisterDB.db) is gebaseerd op de *casuïstiek* van het Estafettemodel iWlz 2.4.3, omgezet naar het netwerkmodel. Hieronder volgt een overzicht en mapping naar de verschillende casuïstiek. Er is een extra casus toegevoegd om `Overdracht` te vullen.
@@ -205,8 +275,3 @@ Een overzicht met de beschikbare testdata is te vinden in het [**overzicht besch
 
 Raadpleeg de data door middel van GraphQL of gebruik een SQLite viewer. Dit kan door het installeren van een extensie in Visual Studio Code ([SQLite3 Editor](https://marketplace.visualstudio.com/items?itemName=yy0931.vscode-sqlite3-editor)) of met [DB Browser for SQLite - Portable](https://portableapps.com/apps/development/sqlite_database_browser_portable).
 
-## Disclaimer toegangscontrole
-> [!WARNING]
-> Deze installatie bestaat alleen uit een GraphQL-server zodat er queries uitgevoerd kunnen worden en getest op een gewenst resultaat. De toegangscontrole of het uitvoering van policies is **GEEN** onderdeel van deze installatie. 
->
-> Een zorgaanbieder kan dus gewoon het percentage pgb opvragen omdat hier controle op is. 
